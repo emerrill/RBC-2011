@@ -8,13 +8,13 @@ int FM_RST_PIN = A3;
 int TX2_PIN = 7;
 int RX2_PIN = 6;
 
-int ENCODE_A_PIN = 3;
+int ENCODE_A_PIN = 3; //Interupt pin
 int ENCODE_B_PIN = 2;
 
-int PHOTO_1_PIN = 4;
+int PHOTO_1_PIN = 4; //Interupt pin
 int PHOTO_2_PIN = 5;
 
-int SERVO_PIN = 9;
+int SERVO_PIN = 9; //Should be hardware PWM - only spot left after SPI
 
 int SCK_PIN = 13;
 int MISO_PIN = 12;
