@@ -38,6 +38,10 @@
 #define POT_1_ADDY 0x29
 
 
+#define MAX_ENCODER  2000
+#define MIN_ENCODER  0
+
+
 //===================================================
 //Variables
 //===================================================
@@ -64,7 +68,7 @@ void setup() {
   //Photo Gates
   pinMode(PHOTO_1_PIN, INPUT);
   pinMode(PHOTO_2_PIN, INPUT);
-  attachInterrupt(1, needleChange, CHANGE);
+  attachInterrupt(1, needleChange, FALLING);
   
   //Servo
   servo.attach(SERVO_PIN);
@@ -78,27 +82,41 @@ void setup() {
 }
 
 void loop() {
-  
+  delay(500);
+  Serial.print("Encoder: ");
+  Serial.println(encoderPos);
+  //Serial.print("Needle : ");
+  //Serial.println(needlePos);
 }
 
 
 
 void encoderChange() {
   a = digitalRead(ENCODER_A_PIN);
+  //a = LOW;
   b = digitalRead(ENCODER_B_PIN);
   
   if (b == a) {
-    encoderPos = UP;
+    encoderDir = UP;
     encoderPos++;
   } else {
-    encoderPos = DOWN;
+    encoderDir = DOWN;
     encoderPos--;
+  }
+  
+  if (encoderPos > MAX_ENCODER) {
+    encoderDir = DOWN;
+    encoderPos = MAX_ENCODER;
+  }
+  
+  if (encoderPos < MIN_ENCODER) {
+    encoderDir = UP;
+    encoderPos = MIN_ENCODER;
   }
   
   
   //TODO Update motor?
-  Serial.print("Encoder: ");
-  Serial.println(encoderPos);
+  
 }
 
 void needleChange() {
@@ -109,8 +127,7 @@ void needleChange() {
   }
   //TODO calibration on PIN 2
   //TODO Update motor?
-  Serial.print("Needle : ");
-  Serial.println(needlePos);
+  
 }
 
 
