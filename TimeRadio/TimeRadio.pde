@@ -1,10 +1,16 @@
 // Probably some code should go in here or something.
 #include <Wire.h>
+#include <Servo.h>
 
 #define FAIL  0
 #define SUCCESS  1
 
+#define DOWN  0 //Direction used for seeking. Default is down
+#define UP  1
 
+//===================================================
+//Pins and addressed
+//===================================================
 #define SDIO_PIN     18 //SDA/A4 on Arduino
 #define SCLK_PIN     19 //SCL/A5 on Arduino
 
@@ -13,10 +19,10 @@
 #define TX2_PIN      7
 #define RX2_PIN      6
 
-#define ENCODE_A_PIN 3 //Interupt pin
-#define ENCODE_B_PIN 2
+#define ENCODER_A_PIN 2 //Interupt pin
+#define ENCODER_B_PIN 4
 
-#define PHOTO_1_PIN  4 //Interupt pin
+#define PHOTO_1_PIN  3 //Interupt pin
 #define PHOTO_2_PIN  5
 
 #define SERVO_PIN    9 //Should be hardware PWM - only spot left after SPI
@@ -27,27 +33,85 @@
 #define SS1_PIN      10
 #define SS2_PIN      8
 
-uint16_t fm_registers[16];
-
 #define FM_ADDY 0x10
 #define POT_1_ADDY 0x28
 #define POT_1_ADDY 0x29
 
 
+//===================================================
+//Variables
+//===================================================
+uint16_t fm_registers[16];
+
+volatile int needlePos = 0;
+volatile byte needleDir = UP;
+volatile int encoderPos = 0;
+volatile byte encoderDir = UP;
+
+volatile byte a = LOW;
+volatile byte b = LOW;
+
+Servo servo;
+
 void setup() {
-  
-  
   Serial.begin(57600);
   
-  fm_init();
+  //Rotary Encoder
+  pinMode(ENCODER_A_PIN, INPUT);
+  pinMode(ENCODER_B_PIN, INPUT);
+  attachInterrupt(0, encoderChange, CHANGE);
   
-  fm_seek(1);
+  //Photo Gates
+  pinMode(PHOTO_1_PIN, INPUT);
+  pinMode(PHOTO_2_PIN, INPUT);
+  attachInterrupt(1, needleChange, CHANGE);
+  
+  //Servo
+  servo.attach(SERVO_PIN);
+  servo.writeMicroseconds(1500); //No movement
+  
+  //FM
+  fm_init();
+  fm_seek(UP);
+  
+  
 }
 
 void loop() {
   
 }
 
+
+
+void encoderChange() {
+  a = digitalRead(ENCODER_A_PIN);
+  b = digitalRead(ENCODER_B_PIN);
+  
+  if (b == a) {
+    encoderPos = UP;
+    encoderPos++;
+  } else {
+    encoderPos = DOWN;
+    encoderPos--;
+  }
+  
+  
+  //TODO Update motor?
+  Serial.print("Encoder: ");
+  Serial.println(encoderPos);
+}
+
+void needleChange() {
+  if (needleDir == UP) {
+    needlePos++;
+  } else {
+    needlePos--;
+  }
+  //TODO calibration on PIN 2
+  //TODO Update motor?
+  Serial.print("Needle : ");
+  Serial.println(needlePos);
+}
 
 
 
@@ -87,9 +151,6 @@ void loop() {
 #define SFBL  13
 
 
-
-#define SEEK_DOWN  0 //Direction used for seeking. Default is down
-#define SEEK_UP  1
 
 void fm_init() {
   Serial.println("Initializing FM");
@@ -182,7 +243,7 @@ byte fm_seek(byte seekDirection){
   fm_registers[POWERCFG] |= (1<<SKMODE); //Allow wrap
   //fm_registers[POWERCFG] &= ~(1<<SKMODE); //Disallow wrap - if you disallow wrap, you may want to tune to 87.5 first
 
-  if(seekDirection == SEEK_DOWN) fm_registers[POWERCFG] &= ~(1<<SEEKUP); //Seek down is the default upon reset
+  if(seekDirection == DOWN) fm_registers[POWERCFG] &= ~(1<<SEEKUP); //Seek down is the default upon reset
   else fm_registers[POWERCFG] |= 1<<SEEKUP; //Set the bit to seek up
 
   fm_registers[POWERCFG] |= (1<<SEEK); //Start seek
