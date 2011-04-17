@@ -1,0 +1,18 @@
+
+
+The rMP3 library requires an updated NewSoftSerial Library
+Source: http://www.roguerobotics.com/wikidocs/code/library/arduino/roguemp3#rogue_robotics_mp3_playback_module_interface_library_usage
+
+Ardino Serail Base Class:
+http://www.roguerobotics.com/wikidocs/code/arduino_serial_base_class
+
+    1. Download the Arduino with Stream Core.
+        http://rogue-code.googlecode.com/files/ArduinoCore-Stream.zip
+        
+    2. Install into SKETCHBOOK/hardware folder (create the hardware folder if it doesn't exist).
+    
+    3. Start the IDE and select one of the ”(Stream)” version of your board from the Tools|Board menu.
+    
+    4. NewSoftSerial and other libraries with Stream modifications can be downloaded from:
+        
+
