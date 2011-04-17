@@ -1,6 +1,10 @@
-// Probably some code should go in here or something.
+//Modify the wire library for 400KHz - described here: http://www.arduino.cc/cgi-bin/yabb2/YaBB.pl?num=1241668644
+
+
 #include <Wire.h>
 #include <Servo.h>
+#include <RogueMP3.h>
+#include <NewSoftSerial.h>
 
 #define FAIL  0
 #define SUCCESS  1
@@ -47,6 +51,7 @@
 //===================================================
 uint16_t fm_registers[16];
 
+
 volatile int needlePos = 0;
 volatile byte needleDir = UP;
 volatile int encoderPos = 0;
@@ -56,6 +61,8 @@ volatile byte a = LOW;
 volatile byte b = LOW;
 
 Servo servo;
+NewSoftSerial mp3Serial(RX2_PIN, TX2_PIN);
+RogueMP3 mp3(mp3Serial);
 
 void setup() {
   Serial.begin(57600);
@@ -69,7 +76,7 @@ void setup() {
   pinMode(PHOTO_1_PIN, INPUT);
   pinMode(PHOTO_2_PIN, INPUT);
   attachInterrupt(1, needleChange, FALLING);
-  
+
   //Servo
   servo.attach(SERVO_PIN);
   servo.writeMicroseconds(1500); //No movement
@@ -77,6 +84,9 @@ void setup() {
   //FM
   fm_init();
   fm_seek(UP);
+  
+  //mp3
+  mp3_init();
   
   
 }
@@ -87,13 +97,16 @@ void loop() {
   Serial.println(encoderPos);
   //Serial.print("Needle : ");
   //Serial.println(needlePos);
+  
+  Serial.print("Free RAM: ");
+  Serial.println(get_free_memory());
 }
 
 
 
+//Interupt Service Routine for Encoder
 void encoderChange() {
   a = digitalRead(ENCODER_A_PIN);
-  //a = LOW;
   b = digitalRead(ENCODER_B_PIN);
   
   if (b == a) {
@@ -119,6 +132,7 @@ void encoderChange() {
   
 }
 
+//Interupt Service Routine for Photo Gate
 void needleChange() {
   if (needleDir == UP) {
     needlePos++;
@@ -131,6 +145,18 @@ void needleChange() {
 }
 
 
+
+//===================================================
+//MP3 Radio Stuff
+//===================================================
+void mp3_init() {
+  mp3Serial.begin(9600);
+  
+  //mp3.sync();
+  //mp3.stop();
+  
+  //TODO load files
+}
 
 
 //===================================================
@@ -309,4 +335,23 @@ int fm_readChannel(void) {
 
   channel += 875; //98 + 875 = 973
   return(channel);
+}
+
+
+//===================================================
+//Misc
+//===================================================
+extern unsigned int __bss_end;
+extern unsigned int *__brkval;
+
+int get_free_memory()
+{
+  int free_memory;
+
+  if((int)__brkval == 0)
+    free_memory = ((int)&free_memory) - ((int)&__bss_end);
+  else
+    free_memory = ((int)&free_memory) - ((int)__brkval);
+
+  return free_memory;
 }
