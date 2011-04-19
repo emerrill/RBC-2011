@@ -1,12 +1,22 @@
-// Probably some code should go in here or something.
+//Modify the wire library for 400KHz - described here: http://www.arduino.cc/cgi-bin/yabb2/YaBB.pl?num=1241668644
+
+
 #include <Wire.h>
+#include <Servo.h>
+#include <RogueMP3.h>
+#include <NewSoftSerial.h>
 #include "tracks.h"
 
 
 #define FAIL  0
 #define SUCCESS  1
 
+#define DOWN  0 //Direction used for seeking. Default is down
+#define UP  1
 
+//===================================================
+//Pins and addressed
+//===================================================
 #define SDIO_PIN     18 //SDA/A4 on Arduino
 #define SCLK_PIN     19 //SCL/A5 on Arduino
 
@@ -15,10 +25,10 @@
 #define TX2_PIN      7
 #define RX2_PIN      6
 
-#define ENCODE_A_PIN 3 //Interupt pin
-#define ENCODE_B_PIN 2
+#define ENCODER_A_PIN 2 //Interupt pin
+#define ENCODER_B_PIN 4
 
-#define PHOTO_1_PIN  4 //Interupt pin
+#define PHOTO_1_PIN  3 //Interupt pin
 #define PHOTO_2_PIN  5
 
 #define SERVO_PIN    9 //Should be hardware PWM - only spot left after SPI
@@ -29,8 +39,6 @@
 #define SS1_PIN      10
 #define SS2_PIN      8
 
-uint16_t fm_registers[16];
-
 #define FM_ADDY 0x10
 #define POT_1_ADDY 0x28
 #define POT_1_ADDY 0x29
@@ -38,15 +46,54 @@ uint16_t fm_registers[16];
 DateCode track_table[TRACK_TABLE_MAX_SZ];
 int track_table_sz;
 
+#define MAX_ENCODER  2000
+#define MIN_ENCODER  0
+
+
+//===================================================
+//Variables
+//===================================================
+uint16_t fm_registers[16];
+
+
+volatile int needlePos = 0;
+volatile byte needleDir = UP;
+volatile int encoderPos = 0;
+volatile byte encoderDir = UP;
+
+volatile byte a = LOW;
+volatile byte b = LOW;
+
+Servo servo;
+NewSoftSerial mp3Serial(RX2_PIN, TX2_PIN);
+RogueMP3 mp3(mp3Serial);
+
 void setup() {
-  
-  
   Serial.begin(57600);
+  
+  //Rotary Encoder
+  pinMode(ENCODER_A_PIN, INPUT);
+  pinMode(ENCODER_B_PIN, INPUT);
+  attachInterrupt(0, encoderChange, CHANGE);
+  
+  //Photo Gates
+  pinMode(PHOTO_1_PIN, INPUT);
+  pinMode(PHOTO_2_PIN, INPUT);
+  attachInterrupt(1, needleChange, FALLING);
+
+  //Servo
+  servo.attach(SERVO_PIN);
+  servo.writeMicroseconds(1500); //No movement
   Serial.println("start");
   
+  //FM
   fm_init();
+  fm_seek(UP);
   
-  fm_seek(1);
+  //mp3
+  mp3_init();
+  
+  
   
   tracks_init();
   Serial.print(track_table_sz);
@@ -57,7 +104,16 @@ int trackIdx=0;
 
 void loop() {
   char filename[FILE_NAME_MAX_SZ];
+
+  delay(500);
+  Serial.print("Encoder: ");
+  Serial.println(encoderPos);
+  //Serial.print("Needle : ");
+  //Serial.println(needlePos);
   
+  Serial.print("Free RAM: ");
+  Serial.println(get_free_memory());
+
   Serial.print("play file: ");
   track_table[trackIdx].get_filename(filename);
   Serial.println(filename);
@@ -74,6 +130,59 @@ void loop() {
 
 
 
+//Interupt Service Routine for Encoder
+void encoderChange() {
+  a = digitalRead(ENCODER_A_PIN);
+  b = digitalRead(ENCODER_B_PIN);
+  
+  if (b == a) {
+    encoderDir = UP;
+    encoderPos++;
+  } else {
+    encoderDir = DOWN;
+    encoderPos--;
+  }
+  
+  if (encoderPos > MAX_ENCODER) {
+    encoderDir = DOWN;
+    encoderPos = MAX_ENCODER;
+  }
+  
+  if (encoderPos < MIN_ENCODER) {
+    encoderDir = UP;
+    encoderPos = MIN_ENCODER;
+  }
+  
+  
+  //TODO Update motor?
+  
+}
+
+//Interupt Service Routine for Photo Gate
+void needleChange() {
+  if (needleDir == UP) {
+    needlePos++;
+  } else {
+    needlePos--;
+  }
+  //TODO calibration on PIN 2
+  //TODO Update motor?
+  
+}
+
+
+
+//===================================================
+//MP3 Radio Stuff
+//===================================================
+void mp3_init() {
+  mp3Serial.begin(9600);
+  
+  //mp3.sync();
+  //mp3.stop();
+  
+  //TODO load files
+}
 
 
 //===================================================
@@ -111,9 +220,6 @@ void loop() {
 #define SFBL  13
 
 
-
-#define SEEK_DOWN  0 //Direction used for seeking. Default is down
-#define SEEK_UP  1
 
 void fm_init() {
   Serial.println("Initializing FM");
@@ -206,7 +312,7 @@ byte fm_seek(byte seekDirection){
   fm_registers[POWERCFG] |= (1<<SKMODE); //Allow wrap
   //fm_registers[POWERCFG] &= ~(1<<SKMODE); //Disallow wrap - if you disallow wrap, you may want to tune to 87.5 first
 
-  if(seekDirection == SEEK_DOWN) fm_registers[POWERCFG] &= ~(1<<SEEKUP); //Seek down is the default upon reset
+  if(seekDirection == DOWN) fm_registers[POWERCFG] &= ~(1<<SEEKUP); //Seek down is the default upon reset
   else fm_registers[POWERCFG] |= 1<<SEEKUP; //Set the bit to seek up
 
   fm_registers[POWERCFG] |= (1<<SEEK); //Start seek
@@ -255,4 +361,23 @@ int fm_readChannel(void) {
 
   channel += 875; //98 + 875 = 973
   return(channel);
+}
+
+
+//===================================================
+//Misc
+//===================================================
+extern unsigned int __bss_end;
+extern unsigned int *__brkval;
+
+int get_free_memory()
+{
+  int free_memory;
+
+  if((int)__brkval == 0)
+    free_memory = ((int)&free_memory) - ((int)&__bss_end);
+  else
+    free_memory = ((int)&free_memory) - ((int)__brkval);
+
+  return free_memory;
 }
