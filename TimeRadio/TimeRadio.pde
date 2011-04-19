@@ -1,5 +1,7 @@
 // Probably some code should go in here or something.
 #include <Wire.h>
+#include "tracks.h"
+
 
 #define FAIL  0
 #define SUCCESS  1
@@ -33,18 +35,40 @@ uint16_t fm_registers[16];
 #define POT_1_ADDY 0x28
 #define POT_1_ADDY 0x29
 
+DateCode track_table[TRACK_TABLE_MAX_SZ];
+int track_table_sz;
 
 void setup() {
   
   
   Serial.begin(57600);
+  Serial.println("start");
   
   fm_init();
   
   fm_seek(1);
+  
+  tracks_init();
+  Serial.print(track_table_sz);
+  Serial.println(" tracks on the card");
 }
 
+int trackIdx=0;
+
 void loop() {
+  char filename[FILE_NAME_MAX_SZ];
+  
+  Serial.print("play file: ");
+  track_table[trackIdx].get_filename(filename);
+  Serial.println(filename);
+  
+  play_track_idx(trackIdx);
+  
+  delay(5000);
+  
+  trackIdx++;
+  trackIdx %= track_table_sz;
+  
   
 }
 
