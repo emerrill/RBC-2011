@@ -87,6 +87,9 @@ volatile int newTrackIdx = -1;
 
 volatile int pending = 0;
 
+volatile long newYear = 0;
+long curYear = 0;
+
 //Servo servo;
 NewSoftSerial mp3Serial(RX2_PIN, TX2_PIN);
 RogueMP3 mp3(mp3Serial);
@@ -118,7 +121,7 @@ void setup() {
   fm_seek(UP);
   //Wire.begin();//Temp
   display_init();
-  displayYear(88888);
+  displayYear(12345);
   
   setVolume(0, 0xaa); //FM
   setVolume(65, 0xa9); //MP3
@@ -274,6 +277,11 @@ void loop() {
     }
   }
   
+  if (newYear != curYear) {
+    displayYear(((newYear*10)+3));
+    curYear = newYear;
+  }
+  
   delay(100);
   /*char filename[FILE_NAME_MAX_SZ];
   
@@ -316,7 +324,7 @@ void encoderChange() {
   }
   
   destPos = encoderPos;
-  Serial.println(destPos);
+  //Serial.println(destPos);
   updateMotor();
   
   /*
@@ -368,7 +376,7 @@ void needleChange() {
     needlePos = 0;
     //Serial.println("Low Limit");
     if (needleDir == MOT_DOWN) {
-      Serial.println("Mot Stop");
+      //Serial.println("Mot Stop");
       motorStop();
     }
     return;
@@ -376,16 +384,19 @@ void needleChange() {
   
   if (needlePos >= MOT_MAX) {
     //needlePos = MOT_MAX;
-    Serial.println("High Limit");
+    //Serial.println("High Limit");
     if (needleDir == MOT_UP) {
       motorStop();
     }
     return;
   }
   
+  long yr = (int)posToYear(needlePos);
+  newYear = yr;
+  
   if (pending != 1) {
     char filename[FILE_NAME_MAX_SZ];
-    long yr = (int)posToYear(needlePos);
+    
     DateCode dc(yr);
     int idx = find_track_idx(dc);
     //track_table[idx].get_filename(filename);
@@ -395,7 +406,7 @@ void needleChange() {
     if ((currTrackIdx >= 0) && (abs(track_table[currTrackIdx] - dc) >= 3) && (newTrackIdx != -2)) {
       pending = 1;
       newTrackIdx = -2;
-      Serial.println("Detune");
+      //Serial.println("Detune");
       //setVolume(0, 0xaa);
       //setVolume(65, 0xa9);
     }
@@ -403,7 +414,7 @@ void needleChange() {
     if (abs(track_table[idx] - dc) < 1) {
       if ((currTrackIdx != idx) && (newTrackIdx != idx)) {
         pending = 1;
-        Serial.print("Set");
+        //Serial.print("Set");
         //Serial.println(get_free_memory());
         //Serial.println(filename);
         newTrackIdx = idx;
