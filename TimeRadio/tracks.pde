@@ -49,7 +49,7 @@
       epoch = this->value.high_word;
       epoch = abs(epoch);     
       
-      return sprintf(str, "%de%02d.MP3", year, epoch); 
+      return sprintf(str, "%04de%02d.MP3", year, epoch); 
     }
     
     bool DateCode::operator>(DateCode other)
@@ -119,8 +119,6 @@ int tracks_init(void)
     {
       while(!ump3_serial.available());
       buf[idx++] = ump3_serial.read();
-      DEBUG_UMP3(String(idx) + String(": ") + String(buf[idx-1]) +
-                 String(" ") + String((int)buf[idx-1]));
     } while(buf[idx-1] != 0x0D);
     
     // replace the trailing CR with a null
