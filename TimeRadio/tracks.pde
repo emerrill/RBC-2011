@@ -27,7 +27,7 @@
       int year;
       int epoch;
       
-      sscanf(str, "%de%d.MP3", &year, &epoch);
+      sscanf(str, "%de%d.mp3", &year, &epoch);
     
       this->set(year, epoch);
     }
@@ -49,7 +49,7 @@
       epoch = this->value.high_word;
       epoch = abs(epoch);     
       
-      return sprintf(str, "%04de%02d.MP3", year, epoch); 
+      return sprintf(str, "%de%02d.mp3", year, epoch); 
     }
     
     bool DateCode::operator>(DateCode other)
@@ -101,7 +101,7 @@ int tracks_init(void)
   
   DEBUG_UMP3("tracks_init");
 
-  ump3_serial.begin(9600);
+  ump3_serial.begin(4800);
   idx = ump3.sync();
   DEBUG_UMP3(String("ump3.sync() ") + String(idx));
   ump3.stop();
@@ -125,6 +125,7 @@ int tracks_init(void)
     buf[idx-1] = 0;
     
     DEBUG_UMP3(String("uMP3 rx: ") + String(buf));
+    //Serial.println(buf);
 
     if( 1 == sscanf(buf, "%*d %s", &file_name))
     {
@@ -158,15 +159,28 @@ int find_track_idx(DateCode target)
     }
   }
 
-  return idx;
+  return closest_idx;
 }
 
 void play_track_idx(int idx)
 {
+
    char file_name[FILE_NAME_MAX_SZ];  
    track_table[idx].get_filename(file_name); 
+
+   ump3.sync();
    
    ump3_serial.print("PC F /");
    ump3_serial.print(file_name);
    ump3_serial.print("\n");
+   
+   //ump3.stop();
+
+  
+
+    
+  
+  
+  
+   
 }

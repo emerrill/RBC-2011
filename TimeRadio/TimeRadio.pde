@@ -2,7 +2,7 @@
 
 
 #include <Wire.h>
-#include <Servo.h>
+//#include <Servo.h>
 #include <RogueMP3.h>
 #include <NewSoftSerial.h>
 #include "tracks.h"
@@ -14,13 +14,23 @@
 #define DOWN  0 //Direction used for seeking. Default is down
 #define UP  1
 
+#define MOT_DOWN -1
+#define MOT_STOP 0
+#define MOT_UP 1
+#define MOT_DRV_UP 0
+#define MOT_DRV_DOWN 1
+#define MOT_MAX 570 //TODO
+#define MOT_DEF_SPD 170
+#define MOT_MIN_SPD 140
+#define MOT_MAX_SPD 200
+
 //===================================================
 //Pins and addressed
 //===================================================
 #define SDIO_PIN     18 //SDA/A4 on Arduino
 #define SCLK_PIN     19 //SCL/A5 on Arduino
 
-#define FM_RST_PIN   17
+#define FM_RST_PIN   17 //A3
 
 #define TX2_PIN      7
 #define RX2_PIN      6
@@ -29,19 +39,23 @@
 #define ENCODER_B_PIN 4
 
 #define PHOTO_1_PIN  3 //Interupt pin
-#define PHOTO_2_PIN  5
+#define MOT_LIM_PIN  5
 
-#define SERVO_PIN    9 //Should be hardware PWM - only spot left after SPI
+#define MOT_PIN      9 //Should be hardware PWM - only spot left after SPI
+#define MOT_DIR_PIN  8
 
 #define SCK_PIN      13
 #define MISO_PIN     12
 #define MOSI_PIN     11
 #define SS1_PIN      10
-#define SS2_PIN      8
+#define SS2_PIN      16 //A2
 
 #define FM_ADDY 0x10
 #define POT_1_ADDY 0x28
-#define POT_1_ADDY 0x29
+#define POT_2_ADDY 0x29
+
+#define IO_1_ADDY 0x26
+#define IO_2_ADDY 0x27
 
 DateCode track_table[TRACK_TABLE_MAX_SZ];
 int track_table_sz;
@@ -57,14 +71,26 @@ uint16_t fm_registers[16];
 
 
 volatile int needlePos = 0;
-volatile byte needleDir = UP;
+volatile int needleDir = UP;
 volatile int encoderPos = 0;
 volatile byte encoderDir = UP;
+volatile int destPos = 0;
 
 volatile byte a = LOW;
 volatile byte b = LOW;
 
-Servo servo;
+volatile int motSpeed = MOT_DEF_SPD;
+volatile unsigned long motLast = 0;
+
+volatile int currTrackIdx = -1;
+volatile int newTrackIdx = -1;
+
+volatile int pending = 0;
+
+volatile long newYear = 0;
+long curYear = 0;
+
+//Servo servo;
 NewSoftSerial mp3Serial(RX2_PIN, TX2_PIN);
 RogueMP3 mp3(mp3Serial);
 
@@ -74,39 +100,138 @@ void setup() {
   //Rotary Encoder
   pinMode(ENCODER_A_PIN, INPUT);
   pinMode(ENCODER_B_PIN, INPUT);
-  attachInterrupt(0, encoderChange, CHANGE);
+  attachInterrupt(0, encoderChange, FALLING); 
   
   //Photo Gates
   pinMode(PHOTO_1_PIN, INPUT);
-  pinMode(PHOTO_2_PIN, INPUT);
-  attachInterrupt(1, needleChange, FALLING);
+  pinMode(MOT_LIM_PIN, INPUT);
+  digitalWrite(MOT_LIM_PIN, HIGH); //Set pull up
+  attachInterrupt(1, needleChange, CHANGE);
 
-  //Servo
-  servo.attach(SERVO_PIN);
-  servo.writeMicroseconds(1500); //No movement
-  Serial.println("start");
+  //Motor
+  pinMode(MOT_PIN, OUTPUT);
+  digitalWrite(MOT_PIN, LOW);
+  pinMode(MOT_DIR_PIN, OUTPUT);
+  digitalWrite(MOT_DIR_PIN, LOW);
+  
+  
   
   //FM
   fm_init();
   fm_seek(UP);
+  //Wire.begin();//Temp
+  display_init();
+  displayYear(12345);
+  
+  setVolume(0, 0xaa); //FM
+  setVolume(65, 0xa9); //MP3
   
   //mp3
   mp3_init();
   
   
-  
+  Serial.print("Free RAM: ");
+  Serial.println(get_free_memory());
   tracks_init();
+  Serial.print("Free RAM: ");
+  Serial.println(get_free_memory());
+  //Serial.println(mp3.getsetting('D'));
   Serial.print(track_table_sz);
   Serial.println(" tracks on the card");
+  
+  mp3Serial.print("ST V 30");
+
+  mp3Serial.print("\n");
+  
+  calibrateMotor();
+
 }
 
 int trackIdx=0;
 
 void loop() {
-  char filename[FILE_NAME_MAX_SZ];
-
+  
+  /*Serial.print("Free RAM: ");
+  Serial.println(get_free_memory());
+  
+  delay(250);
+  //return;
+  
+  int val = 0;
+  */
+  //char c;
+  
+  /*if(Serial.available() > 6)
+  {
+    //c = Serial.read();
+    //val = (int)(Serial.read() - '0') * 1000;
+    val = (int)(Serial.read() - '0') * 100;
+    val += (int)(Serial.read() - '0') * 10;
+    val += (int)(Serial.read() - '0') * 1;
+    motSpeed = val;
+    Serial.print("Updating to spd ");
+    Serial.print(val);
+    val = (int)(Serial.read() - '0') * 100;
+    val += (int)(Serial.read() - '0') * 10;
+    val += (int)(Serial.read() - '0') * 1;
+    
+    Serial.read();
+    
+    destPos = val;
+    
+    Serial.print(" dest ");
+    Serial.println(destPos);
+    motLast = millis();
+    updateMotor();
+  }*/
+  
+  /*if (needleDir != MOT_STOP) {
+    if ((motLast + 500) <= millis()) {
+      motLast = millis();
+      motorStop();
+      delay(100);
+      calibrateMotor();
+    }
+  }*/
+  /*setVolume(65);
+  delay(1000);
+  setVolume(30);
+  delay(1000);
+  setVolume(10);
+  delay(1000);
+  setVolume(5);
+  delay(1000);
+  setVolume(1);
+  delay(1000);
+  setVolume(0);
+  delay(10000);*/
+  //char filename[FILE_NAME_MAX_SZ];
+  /*displayYear(0);
   delay(500);
-  Serial.print("Encoder: ");
+  displayYear(11111);
+  delay(500);
+  displayYear(22222);
+  delay(500);
+  displayYear(33333);
+  delay(500);
+  displayYear(44444);
+  delay(500);
+  displayYear(55555);
+  delay(500);
+  displayYear(66666);
+  delay(500);
+  displayYear(77777);
+  delay(500);
+  displayYear(88888);
+  delay(500);
+  displayYear(99999);
+  delay(500);
+  
+  
+  
+  displayYear(88888);
+  delay(10000);*/
+  /*Serial.print("Encoder: ");
   Serial.println(encoderPos);
   //Serial.print("Needle : ");
   //Serial.println(needlePos);
@@ -123,8 +248,53 @@ void loop() {
   delay(5000);
   
   trackIdx++;
-  trackIdx %= track_table_sz;
+  trackIdx %= track_table_sz;*/
   
+  if (pending == 1) {
+    if (newTrackIdx != -1) {
+      if (newTrackIdx == -2) {
+        Serial.println("Detune");
+        
+        stopPlay();
+        currTrackIdx = -1;
+      } else {
+        char filename[FILE_NAME_MAX_SZ];
+    
+        track_table[newTrackIdx].get_filename(filename);
+        
+        Serial.print("Free RAM: ");
+        Serial.println(get_free_memory());
+        Serial.println(filename);
+        
+        playTrack(newTrackIdx);
+        currTrackIdx = newTrackIdx;
+  
+      }
+      
+      delay(250);
+      pending = 0;
+      newTrackIdx = -1;
+    }
+  }
+  
+  if (newYear != curYear) {
+    displayYear(((newYear*10)+3));
+    curYear = newYear;
+  }
+  
+  delay(100);
+  /*char filename[FILE_NAME_MAX_SZ];
+  
+  Serial.print("play file: ");
+  track_table[trackIdx].get_filename(filename);
+  Serial.println(filename);
+  
+  playTrack(trackIdx);
+  
+  delay(5000);
+  
+  trackIdx++;
+  trackIdx %= track_table_sz;*/
   
 }
 
@@ -135,7 +305,7 @@ void encoderChange() {
   a = digitalRead(ENCODER_A_PIN);
   b = digitalRead(ENCODER_B_PIN);
   
-  if (b == a) {
+  if (b != a) {
     encoderDir = UP;
     encoderPos++;
   } else {
@@ -153,22 +323,251 @@ void encoderChange() {
     encoderPos = MIN_ENCODER;
   }
   
+  destPos = encoderPos;
+  //Serial.println(destPos);
+  updateMotor();
   
-  //TODO Update motor?
+  /*
+  if (pending == 0) {
+    char filename[FILE_NAME_MAX_SZ];
+    long yr = (int)posToYear(encoderPos);
+    DateCode dc(yr);
+    int idx = find_track_idx(dc);
+    //track_table[idx].get_filename(filename);
+  
+
+  
+    if ((currTrackIdx >= 0) && (abs(track_table[currTrackIdx] - dc) >= 3) && (newTrackIdx != -2)) {
+      newTrackIdx = -2;
+      
+      Serial.println("Unset");
+      //setVolume(0, 0xaa);
+      //setVolume(65, 0xa9);
+      pending = 1;
+    }
+    
+    if (abs(track_table[idx] - dc) < 1) {
+      if ((currTrackIdx != idx) && (newTrackIdx != idx)) {
+        Serial.println("Set");
+        //Serial.println(get_free_memory());
+        //Serial.println(filename);
+        newTrackIdx = idx;
+        pending = 1;
+        //play_track_idx(idx);
+      }
+    }
+  }*/
   
 }
 
 //Interupt Service Routine for Photo Gate
 void needleChange() {
-  if (needleDir == UP) {
-    needlePos++;
-  } else {
-    needlePos--;
+  a = digitalRead(MOT_LIM_PIN);
+  motLast = millis();
+  
+  needlePos += needleDir; // 1, 0, -1
+  //Serial.println(needlePos);
+  
+  if (needlePos < 0) {
+    needlePos = 0;
   }
-  //TODO calibration on PIN 2
-  //TODO Update motor?
+  
+  if (a == LOW) {
+    needlePos = 0;
+    //Serial.println("Low Limit");
+    if (needleDir == MOT_DOWN) {
+      //Serial.println("Mot Stop");
+      motorStop();
+    }
+    return;
+  }
+  
+  if (needlePos >= MOT_MAX) {
+    //needlePos = MOT_MAX;
+    //Serial.println("High Limit");
+    if (needleDir == MOT_UP) {
+      motorStop();
+    }
+    return;
+  }
+  
+  long yr = (int)posToYear(needlePos);
+  newYear = yr;
+  
+  if (pending != 1) {
+    char filename[FILE_NAME_MAX_SZ];
+    
+    DateCode dc(yr);
+    int idx = find_track_idx(dc);
+    //track_table[idx].get_filename(filename);
+    
+    updateMotor();
+    
+    if ((currTrackIdx >= 0) && (abs(track_table[currTrackIdx] - dc) >= 3) && (newTrackIdx != -2)) {
+      pending = 1;
+      newTrackIdx = -2;
+      //Serial.println("Detune");
+      //setVolume(0, 0xaa);
+      //setVolume(65, 0xa9);
+    }
+    
+    if (abs(track_table[idx] - dc) < 1) {
+      if ((currTrackIdx != idx) && (newTrackIdx != idx)) {
+        pending = 1;
+        //Serial.print("Set");
+        //Serial.println(get_free_memory());
+        //Serial.println(filename);
+        newTrackIdx = idx;
+        //play_track_idx(idx);
+      }
+    }
+  }
+  
+
+}
+
+void playTrack(int idx) {
+  play_track_idx(idx);
+  delay(250);
+  setVolume(65, 0xaa);
+  setVolume(0, 0xa9);
+}
+
+void stopPlay() {
+  setVolume(0, 0xaa);
+  setVolume(65, 0xa9);
+  //mp3.stop();
+}
+
+//===================================================
+//Date stuff
+//===================================================
+long posToYear(int pos) {
+  return map((long)pos, 0, MOT_MAX, 1850, 2050);
+}
+//===================================================
+//Motor stuff
+//===================================================
+
+void motorStop() {
+  analogWrite(MOT_PIN, 0);
+  needleDir = MOT_STOP;
+}
+
+void updateMotor() {
+  if ((destPos == 0) && (needleDir == MOT_DOWN)) {
+    if (needlePos < 0) {
+      needlePos = 0;
+    }
+    return;
+  }
+  
+  if ((needlePos <= (destPos + 1)) && (needlePos >= (destPos - 1))) {
+    analogWrite(MOT_PIN, 0);
+    needleDir = MOT_STOP;
+    return;
+  }
+  
+  if (needlePos < destPos) {
+    digitalWrite(MOT_DIR_PIN, MOT_DRV_UP); 
+    needleDir = MOT_UP;
+    analogWrite(MOT_PIN, motSpeed); //TODO Speed
+    return;
+  }
+  
+  if (needlePos > destPos) {
+    digitalWrite(MOT_DIR_PIN, MOT_DRV_DOWN);
+    needleDir = MOT_DOWN;
+    analogWrite(MOT_PIN, motSpeed); //TODO Speed
+    return;
+  }
+}
+
+void calibrateMotor() {
+  a = digitalRead(MOT_LIM_PIN);
+  
+  if (a == LOW) {
+    needlePos = 0;
+    return;
+  }
+  
+  needlePos = MOT_MAX * 2;
+  destPos = 0;
+  
+  updateMotor();
   
 }
+
+//===================================================
+//Audio pot stuff
+//===================================================
+void setVolume(byte vol, byte pot) {
+  Wire.beginTransmission(POT_1_ADDY);
+  Wire.send(pot);
+  Wire.send(vol);
+  
+  Wire.endTransmission();
+}
+
+
+//===================================================
+//Display Stuff
+//===================================================
+void displayYear(long yr) {
+  int digit1 = 0;
+  int digit2 = 0;
+  byte out = 0;
+  
+  digit1 = (yr/1000) % 10;
+  digit2 = (yr/100) % 10;
+  
+  out = digit1 << 4;
+  out = out | digit2;
+  //out = 0x88;
+  Wire.beginTransmission(IO_1_ADDY);
+  Wire.send(0x13);
+  Wire.send(out);
+  Wire.endTransmission();
+  Serial.print(out, HEX);
+  
+  digit1 = (yr/10) % 10;
+  digit2 = yr % 10;
+  
+  out = digit1 << 4;
+  out = out | digit2;
+  //out = 0x88;
+  Wire.beginTransmission(IO_2_ADDY);
+  Wire.send(0x13);
+  Wire.send(out);
+  Wire.endTransmission();
+  
+  Serial.print(out, HEX);
+  
+  digit1 = yr/10000;
+  
+  out = digit1 << 4;
+  //`out = 0x88;
+  Wire.beginTransmission(IO_2_ADDY);
+  Wire.send(0x12);
+  Wire.send(out);
+  Wire.endTransmission();
+  Serial.println(out, HEX);
+  
+}
+
+void display_init() {
+  Wire.beginTransmission(IO_1_ADDY);
+  Wire.send(0x00);
+  Wire.send(0x00);
+  Wire.send(0x00);
+  Wire.endTransmission();
+  Wire.beginTransmission(IO_2_ADDY);
+  Wire.send(0x00);
+  Wire.send(0x00);
+  Wire.send(0x00);
+  Wire.endTransmission();
+}
+
 
 
 
@@ -176,7 +575,7 @@ void needleChange() {
 //MP3 Radio Stuff
 //===================================================
 void mp3_init() {
-  mp3Serial.begin(9600);
+  mp3Serial.begin(4800);
   
   //mp3.sync();
   //mp3.stop();
@@ -250,7 +649,7 @@ void fm_init() {
   fm_registers[SYSCONFIG2] &= ~(1<<SPACE1 | 1<<SPACE0) ; //Force 200kHz channel spacing for USA
 
   fm_registers[SYSCONFIG2] &= 0xFFF0; //Clear volume bits
-  fm_registers[SYSCONFIG2] |= 0x0001; //Set volume to lowest
+  fm_registers[SYSCONFIG2] |= 0x0004; //Set volume to lowest
   
   fm_registers[SYSCONFIG3] |= 0x0034; // Set seek to be more strict
   fm_updateRegisters(); //Update
