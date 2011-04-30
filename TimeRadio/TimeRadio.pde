@@ -20,9 +20,12 @@
 #define MOT_DRV_UP 0
 #define MOT_DRV_DOWN 1
 #define MOT_MAX 570 //TODO
-#define MOT_DEF_SPD 170
+#define MOT_DEF_SPD 171
 #define MOT_MIN_SPD 140
 #define MOT_MAX_SPD 200
+
+#define MIN_YR 1814
+#define MAX_YR 2085
 
 //===================================================
 //Pins and addressed
@@ -60,7 +63,7 @@
 DateCode track_table[TRACK_TABLE_MAX_SZ];
 int track_table_sz;
 
-#define MAX_ENCODER  2000
+#define MAX_ENCODER  3s000
 #define MIN_ENCODER  0
 
 
@@ -100,7 +103,7 @@ void setup() {
   //Rotary Encoder
   pinMode(ENCODER_A_PIN, INPUT);
   pinMode(ENCODER_B_PIN, INPUT);
-  attachInterrupt(0, encoderChange, FALLING); 
+  
   
   //Photo Gates
   pinMode(PHOTO_1_PIN, INPUT);
@@ -118,7 +121,9 @@ void setup() {
   
   //FM
   fm_init();
-  fm_seek(UP);
+  //fm_seek(UP);
+  gotoChannel(911);
+  
   //Wire.begin();//Temp
   display_init();
   displayYear(12345);
@@ -135,16 +140,20 @@ void setup() {
   tracks_init();
   Serial.print("Free RAM: ");
   Serial.println(get_free_memory());
-  //Serial.println(mp3.getsetting('D'));
+  mp3.changesetting('V', (uint8_t)10);
+
   Serial.print(track_table_sz);
   Serial.println(" tracks on the card");
   
-  mp3Serial.print("ST V 30");
+  //mp3Serial.print("ST V 5");
 
-  mp3Serial.print("\n");
+  //mp3Serial.print("\n");
+  
+  Serial.println(mp3.getsetting('V'));
   
   calibrateMotor();
-
+  
+  attachInterrupt(0, encoderChange, FALLING); 
 }
 
 int trackIdx=0;
@@ -160,8 +169,9 @@ void loop() {
   int val = 0;
   */
   //char c;
+  int val = 0;
   
-  /*if(Serial.available() > 6)
+  if(Serial.available() > 6)
   {
     //c = Serial.read();
     //val = (int)(Serial.read() - '0') * 1000;
@@ -183,7 +193,7 @@ void loop() {
     Serial.println(destPos);
     motLast = millis();
     updateMotor();
-  }*/
+  }
   
   /*if (needleDir != MOT_STOP) {
     if ((motLast + 500) <= millis()) {
@@ -278,7 +288,7 @@ void loop() {
   }
   
   if (newYear != curYear) {
-    displayYear(((newYear*10)+3));
+    displayYear(((newYear*10)));
     curYear = newYear;
   }
   
@@ -323,7 +333,7 @@ void encoderChange() {
     encoderPos = MIN_ENCODER;
   }
   
-  destPos = encoderPos;
+  destPos = (encoderPos/4);
   //Serial.println(destPos);
   updateMotor();
   
@@ -392,7 +402,10 @@ void needleChange() {
   }
   
   long yr = (int)posToYear(needlePos);
-  newYear = yr;
+  if (currTrackIdx < 0) {
+    newYear = yr;
+  }
+  updateMotor();
   
   if (pending != 1) {
     char filename[FILE_NAME_MAX_SZ];
@@ -401,7 +414,7 @@ void needleChange() {
     int idx = find_track_idx(dc);
     //track_table[idx].get_filename(filename);
     
-    updateMotor();
+    
     
     if ((currTrackIdx >= 0) && (abs(track_table[currTrackIdx] - dc) >= 3) && (newTrackIdx != -2)) {
       pending = 1;
@@ -427,8 +440,9 @@ void needleChange() {
 }
 
 void playTrack(int idx) {
+  newYear = track_table[idx].year();
   play_track_idx(idx);
-  delay(250);
+  //delay(250);
   setVolume(65, 0xaa);
   setVolume(0, 0xa9);
 }
@@ -436,14 +450,14 @@ void playTrack(int idx) {
 void stopPlay() {
   setVolume(0, 0xaa);
   setVolume(65, 0xa9);
-  //mp3.stop();
+  mp3.stop();
 }
 
 //===================================================
 //Date stuff
 //===================================================
 long posToYear(int pos) {
-  return map((long)pos, 0, MOT_MAX, 1850, 2050);
+  return map((long)pos, 0, MOT_MAX, MIN_YR, MAX_YR);
 }
 //===================================================
 //Motor stuff
@@ -605,6 +619,8 @@ void mp3_init() {
 #define SEEKUP  9
 #define SEEK  8
 
+//Register 0x03 - CHANNEL
+#define TUNE  15
 
 //Register 0x04 - SYSCONFIG1
 #define RDS  12
@@ -649,7 +665,7 @@ void fm_init() {
   fm_registers[SYSCONFIG2] &= ~(1<<SPACE1 | 1<<SPACE0) ; //Force 200kHz channel spacing for USA
 
   fm_registers[SYSCONFIG2] &= 0xFFF0; //Clear volume bits
-  fm_registers[SYSCONFIG2] |= 0x0004; //Set volume to lowest
+  fm_registers[SYSCONFIG2] |= 0x000F; //Set volume 
   
   fm_registers[SYSCONFIG3] |= 0x0034; // Set seek to be more strict
   fm_updateRegisters(); //Update
@@ -760,6 +776,45 @@ int fm_readChannel(void) {
 
   channel += 875; //98 + 875 = 973
   return(channel);
+}
+
+void gotoChannel(int newChannel){
+  //Freq(MHz) = 0.200(in USA) * Channel + 87.5MHz
+  //97.3 = 0.2 * Chan + 87.5
+  //9.8 / 0.2 = 49
+  newChannel *= 10; //973 * 10 = 9730
+  newChannel -= 8750; //9730 - 8750 = 980
+
+
+  newChannel /= 20; //980 / 20 = 49
+
+
+  //These steps come from AN230 page 20 rev 0.5
+  fm_readRegisters();
+  fm_registers[CHANNEL] &= 0xFE00; //Clear out the channel bits
+  fm_registers[CHANNEL] |= newChannel; //Mask in the new channel
+  fm_registers[CHANNEL] |= (1<<TUNE); //Set the TUNE bit to start
+  fm_updateRegisters();
+
+  //delay(60); //Wait 60ms - you can use or skip this delay
+
+  //Poll to see if STC is set
+  while(1) {
+    fm_readRegisters();
+    if( (fm_registers[STATUSRSSI] & (1<<STC)) != 0) break; //Tuning complete!
+    Serial.println("Tuning");
+  }
+
+  fm_readRegisters();
+  fm_registers[CHANNEL] &= ~(1<<TUNE); //Clear the tune after a tune has completed
+  fm_updateRegisters();
+
+  //Wait for the si4703 to clear the STC as well
+  while(1) {
+    fm_readRegisters();
+    if( (fm_registers[STATUSRSSI] & (1<<STC)) == 0) break; //Tuning complete!
+    Serial.println("Waiting...");
+  }
 }
 
 

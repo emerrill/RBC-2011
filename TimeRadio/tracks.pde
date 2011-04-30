@@ -176,7 +176,7 @@ void play_track_idx(int idx)
    ump3_serial.print(file_name);
    ump3_serial.print("\n");
    
-   //ump3.stop();
+   ump3.stop();
 
   
 
