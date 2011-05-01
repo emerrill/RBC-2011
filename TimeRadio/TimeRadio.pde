@@ -63,7 +63,7 @@
 DateCode track_table[TRACK_TABLE_MAX_SZ];
 int track_table_sz;
 
-#define MAX_ENCODER  3s000
+#define MAX_ENCODER  3000
 #define MIN_ENCODER  0
 
 
@@ -93,9 +93,6 @@ volatile int pending = 0;
 volatile long newYear = 0;
 long curYear = 0;
 
-//Servo servo;
-NewSoftSerial mp3Serial(RX2_PIN, TX2_PIN);
-RogueMP3 mp3(mp3Serial);
 
 void setup() {
   Serial.begin(57600);
@@ -131,25 +128,22 @@ void setup() {
   setVolume(0, 0xaa); //FM
   setVolume(65, 0xa9); //MP3
   
-  //mp3
-  mp3_init();
-  
   
   Serial.print("Free RAM: ");
   Serial.println(get_free_memory());
   tracks_init();
   Serial.print("Free RAM: ");
   Serial.println(get_free_memory());
-  mp3.changesetting('V', (uint8_t)10);
+  ump3.changesetting('V', (uint8_t)10);
 
   Serial.print(track_table_sz);
   Serial.println(" tracks on the card");
   
-  //mp3Serial.print("ST V 5");
+  //ump3_serial.print("ST V 5");
 
-  //mp3Serial.print("\n");
+  //ump3_serial.print("\n");
   
-  Serial.println(mp3.getsetting('V'));
+  Serial.println(ump3.getsetting('V'));
   
   calibrateMotor();
   
@@ -450,7 +444,7 @@ void playTrack(int idx) {
 void stopPlay() {
   setVolume(0, 0xaa);
   setVolume(65, 0xa9);
-  mp3.stop();
+  ump3.stop();
 }
 
 //===================================================
@@ -583,19 +577,6 @@ void display_init() {
 }
 
 
-
-
-//===================================================
-//MP3 Radio Stuff
-//===================================================
-void mp3_init() {
-  mp3Serial.begin(4800);
-  
-  //mp3.sync();
-  //mp3.stop();
-  
-  //TODO load files
-}
 
 
 //===================================================

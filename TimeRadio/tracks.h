@@ -4,6 +4,9 @@
 #define TRACK_TABLE_MAX_SZ 128
 #define FILE_NAME_MAX_SZ 16
 
+extern NewSoftSerial ump3_serial;
+extern RogueMP3 ump3;
+
 class DateCode
 {
   public:

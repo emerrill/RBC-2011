@@ -3,7 +3,7 @@
 #include <limits.h>
 #include "tracks.h"
 
-#if 1
+#if 0
 #define DEBUG_UMP3(x) Serial.println((x))
 #else
 #define DEBUG_UMP3(x) ;
@@ -96,12 +96,21 @@ RogueMP3 ump3(ump3_serial);
 int tracks_init(void)
 {
   int idx;
+  long baud;
   char buf[LINE_BUF_SZ];
   char file_name[FILE_NAME_MAX_SZ];
   
   DEBUG_UMP3("tracks_init");
 
-  ump3_serial.begin(4800);
+  while(4800 != soft_serial_auto_baud(&ump3_serial))
+  {
+    DEBUG_UMP3("settting baud rate to 4800");
+    ump3_serial.print("STD6\r");
+    delay(100);
+    ump3_serial.end();
+    ump3_serial.begin(4800);
+  }
+
   idx = ump3.sync();
   DEBUG_UMP3(String("ump3.sync() ") + String(idx));
   ump3.stop();
@@ -176,11 +185,44 @@ void play_track_idx(int idx)
    
    ump3.stop();
 
-  
-
-    
-  
-  
-  
-   
 }
+
+const long baud_table[]=
+{
+  2400,
+  4800,
+  9600,
+  19200,
+  38400,
+  57600,
+  115200
+};
+#define BAUD_TABLE_SZ (sizeof(baud_table)/sizeof(unsigned long))
+
+
+long soft_serial_auto_baud(NewSoftSerial * pSerial)
+{
+  int idx, k;
+  
+  for(idx=0; idx<BAUD_TABLE_SZ; idx++)
+  {
+    pSerial->begin(baud_table[idx]);
+    
+    pSerial->print((char)0x0D); // CR
+    
+    for(k=0; k<10; k++)
+    {
+      if('>' == pSerial->read())
+      {
+        return baud_table[idx];
+      }
+      delay(10);
+    }    
+    
+    pSerial->end();
+  }
+  
+  return -1;
+}
+  
+  
